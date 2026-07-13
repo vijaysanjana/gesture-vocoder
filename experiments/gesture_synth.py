@@ -9,7 +9,7 @@ import numpy as np
 import sounddevice as sd
 
 
-CAMERA_INDEX = 1  # Change this if your MacBook camera uses another index.
+CAMERA_INDEX = 0  # Change this if your MacBook camera uses another index.
 MODEL_PATH = Path("models/hand_landmarker.task")
 
 THUMB_TIP = 4

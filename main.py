@@ -6,7 +6,7 @@ from tracking.hand_tracker import HandTracker
 from ui.overlay import Overlay
 
 
-CAMERA_INDEX = 1
+CAMERA_INDEX = 0
 WINDOW_NAME = "Gesture Vocoder"
 
 
