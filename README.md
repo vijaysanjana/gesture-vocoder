@@ -1,12 +1,19 @@
 # Gesture Vocoder
 
-An interactive musical instrument that uses hand gestures to control a real-time vocoder.
+An experimental framework for controlling musical instruments with hand gestures.
 
-## Goals
+## Current progress
 
-- [X] Hand tracking
-- [ ] Gesture recognition
-- [ ] Synth control
-- [ ] Vocoder
-- [ ] Live performance UI
-- [ ] Recording workflow
+- Webcam input
+- Real-time hand tracking
+- Pinch detection
+- First gesture-controlled synthesizer
+
+## Next milestones
+
+- Gesture abstraction
+- Velocity tracking
+- Two-hand interaction
+- Microphone input
+- Vocoder
+- Recording pipeline
