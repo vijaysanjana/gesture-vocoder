@@ -4,7 +4,7 @@ An interactive musical instrument that uses hand gestures to control a real-time
 
 ## Goals
 
-- [ ] Hand tracking
+- [X] Hand tracking
 - [ ] Gesture recognition
 - [ ] Synth control
 - [ ] Vocoder
