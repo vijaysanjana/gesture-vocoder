@@ -1,5 +1,7 @@
-from ui.animation import AnimatedValue
 import time
+
+import bootstrap  # noqa: F401
+from ui.animation import AnimatedValue
 
 value = AnimatedValue(
     initial=0,
