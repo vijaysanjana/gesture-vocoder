@@ -5,44 +5,30 @@ import numpy as np
 
 class CarrierSynth:
     """
-    Generates a harmonically rich chord carrier for an airy vocoder sound.
+    Generates one harmonically rich carrier note.
 
-    Each chord tone uses two slightly detuned oscillators:
-    root, third, fifth, and octave.
+    Harmony is created by running multiple CarrierSynth and Vocoder
+    instances in parallel, rather than placing an entire chord into one
+    carrier signal.
     """
-
-    CHORD_INTERVALS = {
-        "major": (0,),
-        "minor": (0,),
-        "sus2": (0,),
-        "sus4": (0,),
-    }
 
     def __init__(
         self,
         sample_rate: int,
-        frequency: float = 130.81,
-        chord_type: str = "major",
-        noise_amount: float = 0.00,
+        frequency: float = 196.0,
+        detune_ratio: float = 0.0025,
+        noise_amount: float = 0.0,
     ) -> None:
-        if chord_type not in self.CHORD_INTERVALS:
-            raise ValueError(
-                f"Unsupported chord type: {chord_type}"
-            )
-
         self.sample_rate = sample_rate
         self.frequency = frequency
-        self.chord_type = chord_type
+        self.detune_ratio = detune_ratio
         self.noise_amount = noise_amount
 
-        self.detune_ratio = 0.0025
-        self.random = np.random.default_rng()
+        self.lower_phase = 0.0
+        self.center_phase = 0.0
+        self.upper_phase = 0.0
 
-        # Two oscillator phases for each of the four chord tones.
-        self.phases = np.zeros(
-            (1, 2),
-            dtype=np.float64,
-        )
+        self.random = np.random.default_rng()
 
     def set_frequency(
         self,
@@ -50,95 +36,46 @@ class CarrierSynth:
     ) -> None:
         self.frequency = max(20.0, frequency)
 
-    def set_chord_type(
-        self,
-        chord_type: str,
-    ) -> None:
-        if chord_type not in self.CHORD_INTERVALS:
-            raise ValueError(
-                f"Unsupported chord type: {chord_type}"
-            )
-
-        self.chord_type = chord_type
-
     def generate(
         self,
         frames: int,
     ) -> np.ndarray:
-        chord_frequencies = self._get_chord_frequencies()
-
-        output = np.zeros(
-            frames,
-            dtype=np.float64,
+        lower, self.lower_phase = self._generate_wave(
+            phase=self.lower_phase,
+            frequency=self.frequency * (1.0 - self.detune_ratio),
+            frames=frames,
         )
 
-        # Lower chord tones should carry slightly more weight.
-        chord_weights = (
-            1.0,
+        center, self.center_phase = self._generate_wave(
+            phase=self.center_phase,
+            frequency=self.frequency,
+            frames=frames,
         )
 
-        for tone_index, tone_frequency in enumerate(
-            chord_frequencies
-        ):
-            lower_frequency = (
-                tone_frequency
-                * (1.0 - self.detune_ratio)
-            )
-
-            upper_frequency = (
-                tone_frequency
-                * (1.0 + self.detune_ratio)
-            )
-
-            lower_wave, self.phases[tone_index, 0] = (
-                self._generate_soft_wave(
-                    phase=self.phases[tone_index, 0],
-                    frequency=lower_frequency,
-                    frames=frames,
-                )
-            )
-
-            upper_wave, self.phases[tone_index, 1] = (
-                self._generate_soft_wave(
-                    phase=self.phases[tone_index, 1],
-                    frequency=upper_frequency,
-                    frames=frames,
-                )
-            )
-
-            tone = (
-                lower_wave + upper_wave
-            ) * 0.5
-
-            output += tone * chord_weights[tone_index]
-
-        output /= sum(chord_weights)
-
-        noise = (
-            self.random.standard_normal(frames)
-            * self.noise_amount
+        upper, self.upper_phase = self._generate_wave(
+            phase=self.upper_phase,
+            frequency=self.frequency * (1.0 + self.detune_ratio),
+            frames=frames,
         )
 
-        output += noise
+        carrier = (
+            0.25 * lower
+            + 0.50 * center
+            + 0.25 * upper
+        )
 
-        # Gentle saturation keeps peaks controlled and softens the sound.
-        output = np.tanh(output * 1.25)
+        if self.noise_amount > 0.0:
+            carrier += (
+                self.random.standard_normal(frames)
+                * self.noise_amount
+            )
 
-        return output.astype(np.float32)
+        # Gentle saturation controls peaks.
+        carrier = np.tanh(carrier * 1.2)
 
-    def _get_chord_frequencies(
-        self,
-    ) -> list[float]:
-        intervals = self.CHORD_INTERVALS[
-            self.chord_type
-        ]
+        return carrier.astype(np.float32)
 
-        return [
-            self.frequency * (2.0 ** (semitones / 12.0))
-            for semitones in intervals
-        ]
-
-    def _generate_soft_wave(
+    def _generate_wave(
         self,
         phase: float,
         frequency: float,
@@ -153,18 +90,17 @@ class CarrierSynth:
 
         wrapped = phases % 1.0
 
-        saw = 2.0 * (
-            wrapped - 0.5
-        )
+        saw = 2.0 * (wrapped - 0.5)
 
         sine = np.sin(
             2.0 * np.pi * wrapped
         )
 
-        # Mostly saw for intelligibility, softened with sine.
+        # Keep enough saw harmonics for speech intelligibility while
+        # softening the harsh buzz with a sine component.
         wave = (
-            0.8 * saw
-            + 0.2 * sine
+            0.72 * saw
+            + 0.28 * sine
         )
 
         new_phase = (

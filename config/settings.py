@@ -23,11 +23,31 @@ VOCODER_RELEASE_SECONDS = 0.080
 
 VOCODER_CARRIER_FREQUENCY = 196.0
 VOCODER_CHORD_TYPE = "major"
-VOCODER_OUTPUT_GAIN = 3.0
-VOCODER_WET_MIX = 0.95
+VOCODER_OUTPUT_GAIN = 3.2
+VOCODER_WET_MIX = 0.0
 
-VOCODER_MIN_WET_MIX = 0.80
-VOCODER_MAX_WET_MIX = 1.00
+VOCODER_MIN_WET_MIX = 0.0
+VOCODER_MAX_WET_MIX = 0.97
 
 MIC_INPUT_GAIN = 2.0
-MASTER_OUTPUT_LEVEL = 0.5
+MASTER_OUTPUT_LEVEL = 0.55
+
+# Fixed harmony for the first multi-voice prototype.
+# Semitone intervals from the root:
+# 0 = root, 4 = major third, 7 = perfect fifth.
+VOCODER_HARMONY_INTERVALS = (0, 4, 7)
+
+# Relative volumes for root, third, and fifth.
+VOCODER_HARMONY_GAINS = (1.0, 0.95, 0.85)
+# Overall level of the combined harmony before dry/wet mixing.
+VOCODER_HARMONY_LEVEL = 1.0
+
+PINCH_CALIBRATION_MIN = 0.05
+PINCH_CALIBRATION_MAX = 0.75
+VOCODER_GESTURE_CURVE = 3.0
+
+VOCODER_HARMONY_PANS = (0.0, -0.45, 0.45)
+
+REVERB_MIX = 0.14
+REVERB_ROOM_SIZE = 0.68
+REVERB_STEREO_WIDTH = 0.18

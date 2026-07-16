@@ -24,7 +24,7 @@ def main() -> None:
     )
 
     tracker = HandTracker(
-        num_hands=2,
+        num_hands=1,
         smoothing_factor=HAND_SMOOTHING,
     )
 
