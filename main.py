@@ -1,35 +1,41 @@
 import cv2
 
-from audio.synth import Synth
+from audio.vocoder_instrument import VocoderInstrument
 from camera.webcam import Webcam
+from config.settings import (
+    CAMERA_HEIGHT,
+    CAMERA_INDEX,
+    CAMERA_WIDTH,
+    HAND_SMOOTHING,
+)
 from tracking.hand_tracker import HandTracker
 from ui.overlay import Overlay
 
 
-CAMERA_INDEX = 0
-WINDOW_NAME = "Gesture Vocoder"
+WINDOW_NAME = "GestureVox"
 
 
 def main() -> None:
     webcam = Webcam(
         camera_index=CAMERA_INDEX,
         mirror=True,
+        width=CAMERA_WIDTH,
+        height=CAMERA_HEIGHT,
     )
 
     tracker = HandTracker(
         num_hands=2,
-        smoothing_factor=0.2,
+        smoothing_factor=HAND_SMOOTHING,
     )
 
-    synth = Synth(
-        waveform="sine",
-    )
-
+    instrument = VocoderInstrument()
     overlay = Overlay()
 
-    synth.start()
+    instrument.start()
 
-    print("Gesture Vocoder started.")
+    print("GestureVox vocoder started.")
+    print("Pinch your fingers together for more robot voice.")
+    print("Spread them apart for slightly more natural voice.")
     print("Press Q in the camera window to quit.")
 
     try:
@@ -40,19 +46,19 @@ def main() -> None:
                 frame
             )
 
-            synth.update(
+            instrument.update(
                 gesture_state
             )
 
-            frequency, volume = (
-                synth.get_parameters()
+            wet_mix, carrier_frequency = (
+                instrument.get_parameters()
             )
 
             output_frame = overlay.draw(
                 frame=frame,
                 gesture_state=gesture_state,
-                frequency=frequency,
-                volume=volume,
+                frequency=carrier_frequency,
+                volume=wet_mix,
             )
 
             cv2.imshow(
@@ -60,13 +66,11 @@ def main() -> None:
                 output_frame,
             )
 
-            key = cv2.waitKey(1) & 0xFF
-
-            if key == ord("q"):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     finally:
-        synth.stop()
+        instrument.stop()
         tracker.close()
         webcam.release()
         cv2.destroyAllWindows()

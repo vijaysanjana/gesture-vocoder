@@ -27,27 +27,22 @@ HAND_CONNECTIONS = [
     (1, 2),
     (2, 3),
     (3, 4),
-
     (0, 5),
     (5, 6),
     (6, 7),
     (7, 8),
-
     (5, 9),
     (9, 10),
     (10, 11),
     (11, 12),
-
     (9, 13),
     (13, 14),
     (14, 15),
     (15, 16),
-
     (13, 17),
     (17, 18),
     (18, 19),
     (19, 20),
-
     (0, 17),
 ]
 
@@ -64,14 +59,16 @@ class Overlay:
     ) -> None:
         self.theme = theme or Theme()
 
+        # Raw pinch is still useful for visualizing the physical gesture.
         self.display_pinch = AnimatedValue(
             initial=0.0,
             speed=0.16,
         )
 
-        self.display_pitch = AnimatedValue(
-            initial=0.5,
-            speed=0.12,
+        # This represents the actual dry/wet vocoder mix.
+        self.display_wet_mix = AnimatedValue(
+            initial=0.95,
+            speed=0.14,
         )
 
         self.hand_visibility = AnimatedValue(
@@ -81,7 +78,7 @@ class Overlay:
 
         self.beam_intensity = AnimatedValue(
             initial=0.0,
-            speed=0.2,
+            speed=0.20,
         )
 
         self.start_time = time.perf_counter()
@@ -96,7 +93,15 @@ class Overlay:
         frequency: float,
         volume: float,
     ) -> np.ndarray:
+        """
+        Render the gesture-controlled vocoder interface.
+
+        `frequency` is the fixed carrier frequency.
+        `volume` currently contains the vocoder wet-mix value supplied
+        by VocoderInstrument.
+        """
         output = frame.copy()
+        wet_mix = self._clamp(volume)
 
         self._ensure_glow_canvas(output)
         assert self.glow_canvas is not None
@@ -107,11 +112,11 @@ class Overlay:
 
         self._update_animation_targets(
             hand=hand,
-            frequency=frequency,
+            wet_mix=wet_mix,
         )
 
         display_pinch = self.display_pinch.update()
-        display_pitch = self.display_pitch.update()
+        display_wet_mix = self.display_wet_mix.update()
         visibility = self.hand_visibility.update()
         beam_intensity = self.beam_intensity.update()
 
@@ -144,14 +149,14 @@ class Overlay:
                 beam_intensity=beam_intensity,
             )
 
-        # One blur and one blend for every glowing object.
+        # Composite all glow with one blur for good performance.
         self.glow_canvas.composite(
             frame=output,
             blur_radius=7.0,
             intensity=0.75,
         )
 
-        # Draw crisp foreground after the glow is composited.
+        # Draw crisp shapes after adding the glow.
         for detected_hand, points in hand_render_data:
             self._draw_hand_foreground(
                 frame=output,
@@ -165,7 +170,7 @@ class Overlay:
             frame=output,
             hand=hand,
             display_pinch=display_pinch,
-            display_pitch=display_pitch,
+            display_wet_mix=display_wet_mix,
             frequency=frequency,
         )
 
@@ -182,14 +187,18 @@ class Overlay:
             self.glow_canvas = GlowCanvas(
                 frame.shape
             )
-
             self.glow_shape = frame.shape
 
     def _update_animation_targets(
         self,
         hand: HandState | None,
-        frequency: float,
+        wet_mix: float,
     ) -> None:
+        # Wet mix comes from the audio instrument, so always animate toward it.
+        self.display_wet_mix.set_target(
+            self._clamp(wet_mix)
+        )
+
         if hand is None:
             self.hand_visibility.set_target(0.0)
             self.beam_intensity.set_target(0.0)
@@ -198,16 +207,11 @@ class Overlay:
         self.hand_visibility.set_target(1.0)
         self.display_pinch.set_target(hand.pinch)
 
-        self.display_pitch.set_target(
-            self._frequency_to_normalized(
-                frequency
-            )
-        )
-
+        # Fingers together means stronger robotic processing.
         closeness = 1.0 - hand.pinch
 
         self.beam_intensity.set_target(
-            closeness
+            self._clamp(closeness)
         )
 
     def _apply_background_tint(
@@ -301,13 +305,9 @@ class Overlay:
                 ),
             )
 
-        midpoint = self._pinch_midpoint(
-            points
-        )
-
         if beam_intensity > 0.05:
             glow.circle(
-                center=midpoint,
+                center=self._pinch_midpoint(points),
                 radius=int(
                     10 + beam_intensity * 18
                 ),
@@ -377,10 +377,6 @@ class Overlay:
             )
 
         if beam_intensity > 0.05:
-            midpoint = self._pinch_midpoint(
-                points
-            )
-
             pulse = self._pulse(
                 speed=5.0,
                 minimum=0.8,
@@ -397,7 +393,7 @@ class Overlay:
 
             draw_circle(
                 frame=frame,
-                center=midpoint,
+                center=self._pinch_midpoint(points),
                 radius=max(4, radius),
                 color=self.theme.pinch,
                 thickness=2,
@@ -439,7 +435,7 @@ class Overlay:
         frame: np.ndarray,
         hand: HandState | None,
         display_pinch: float,
-        display_pitch: float,
+        display_wet_mix: float,
         frequency: float,
     ) -> None:
         _, frame_width, _ = frame.shape
@@ -479,41 +475,40 @@ class Overlay:
             thickness=2,
         )
 
-        if hand is None:
-            draw_text(
-                frame=frame,
-                text="SHOW HAND TO BEGIN",
-                origin=(
-                    panel_x + 16,
-                    panel_y + 71,
-                ),
-                color=self.theme.muted_text,
-                scale=0.48,
-            )
-            return
-
-        note_name = self._frequency_to_note(
+        carrier_note = self._frequency_to_note(
             frequency
+        )
+
+        # Show carrier information even when tracking briefly drops.
+        draw_text(
+            frame=frame,
+            text="CARRIER",
+            origin=(
+                panel_x + 16,
+                panel_y + 56,
+            ),
+            color=self.theme.muted_text,
+            scale=0.42,
         )
 
         draw_text(
             frame=frame,
-            text=note_name,
+            text=carrier_note,
             origin=(
-                panel_x + panel_width - 76,
-                panel_y + 70,
+                panel_x + 16,
+                panel_y + 79,
             ),
             color=self.theme.text,
-            scale=1.05,
+            scale=0.82,
             thickness=2,
         )
 
         draw_text(
             frame=frame,
-            text="PITCH",
+            text="ROBOT MIX",
             origin=(
-                panel_x + 16,
-                panel_y + 58,
+                panel_x + 88,
+                panel_y + 56,
             ),
             color=self.theme.muted_text,
             scale=0.42,
@@ -521,38 +516,68 @@ class Overlay:
 
         draw_meter(
             frame=frame,
-            value=display_pitch,
+            value=display_wet_mix,
             origin=(
-                panel_x + 16,
+                panel_x + 88,
                 panel_y + 68,
             ),
-            width=180,
-            height=7,
-            foreground=self.theme.skeleton,
+            width=200,
+            height=8,
+            foreground=self.theme.pinch,
             background=self.theme.panel_border,
         )
 
+        mix_percentage = round(
+            display_wet_mix * 100
+        )
+
+        draw_text(
+            frame=frame,
+            text=f"{mix_percentage}%",
+            origin=(
+                panel_x + 236,
+                panel_y + 101,
+            ),
+            color=self.theme.text,
+            scale=0.48,
+            thickness=1,
+        )
+
+        if hand is None:
+            draw_text(
+                frame=frame,
+                text="SHOW HAND TO CONTROL MIX",
+                origin=(
+                    panel_x + 16,
+                    panel_y + 112,
+                ),
+                color=self.theme.muted_text,
+                scale=0.42,
+            )
+            return
+
+        # A subtle physical-gesture indicator beneath the main mix display.
         draw_text(
             frame=frame,
             text="PINCH",
             origin=(
                 panel_x + 16,
-                panel_y + 101,
+                panel_y + 106,
             ),
             color=self.theme.muted_text,
-            scale=0.42,
+            scale=0.36,
         )
 
         draw_meter(
             frame=frame,
-            value=display_pinch,
+            value=1.0 - display_pinch,
             origin=(
-                panel_x + 16,
-                panel_y + 110,
+                panel_x + 62,
+                panel_y + 99,
             ),
-            width=180,
-            height=7,
-            foreground=self.theme.pinch,
+            width=150,
+            height=5,
+            foreground=self.theme.skeleton,
             background=self.theme.panel_border,
         )
 
@@ -595,25 +620,6 @@ class Overlay:
         return f"{note_name}{octave}"
 
     @staticmethod
-    def _frequency_to_normalized(
-        frequency: float,
-    ) -> float:
-        minimum = 130.81
-        maximum = 1046.50
-
-        if frequency <= minimum:
-            return 0.0
-
-        if frequency >= maximum:
-            return 1.0
-
-        return math.log(
-            frequency / minimum
-        ) / math.log(
-            maximum / minimum
-        )
-
-    @staticmethod
     def _landmark_to_pixel(
         landmark: Any,
         frame_width: int,
@@ -635,14 +641,24 @@ class Overlay:
         color: tuple[int, int, int],
         strength: float,
     ) -> tuple[int, int, int]:
-        strength = max(
-            0.0,
-            min(1.0, strength),
+        strength = Overlay._clamp(
+            strength
         )
 
         return tuple(
             int(channel * strength)
             for channel in color
+        )
+
+    @staticmethod
+    def _clamp(
+        value: float,
+        minimum: float = 0.0,
+        maximum: float = 1.0,
+    ) -> float:
+        return max(
+            minimum,
+            min(maximum, value),
         )
 
     def _pulse(
